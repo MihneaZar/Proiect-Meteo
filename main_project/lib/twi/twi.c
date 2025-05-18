@@ -17,6 +17,9 @@
  
 // include libraries
 #include "twi.h"
+#include <stdio.h>
+
+extern uint8_t TWI_ErrorCode;
 
 /**
  * @desc    TWI init - initialize frequency
@@ -53,7 +56,7 @@ void TWI_Init (void)
  *
  * @return  char
  */
-char TWI_MT_Start (void)
+char TWI_MT_Start (void)  
 {
   // null status flag
   TWI_TWSR &= ~0xA8;
@@ -70,6 +73,38 @@ char TWI_MT_Start (void)
   }
   // success
   return SUCCESS;
+}
+
+void showbits (int n)
+{
+  int i, k, andmask;
+
+  for (i = 15; i >= 0;i--)
+  {
+    andmask = 1 << i;
+    k = n & andmask;
+    k == 0 ? printf ("0") : printf ("1");
+  }
+  printf("\n");
+} 
+
+char TWI_MT_Start_SLAW(char address) {
+  uint8_t status = SUCCESS;
+
+  // TWI: start
+  // -------------------------------------------------------------------------------------
+  status = TWI_MT_Start();
+  if (status != SUCCESS) {
+    return status;
+  }
+  TWDR = address;
+  // enable
+  TWI_ENABLE();
+  // wait till flag set
+  TWI_WAIT_TILL_TWINT_IS_SET();
+  // status = TWI_MT_Send_SLAW(address);
+  // printf("%04x\n", status);
+  return status;
 }
 
 /**
@@ -148,6 +183,56 @@ char TWI_MR_Send_SLAR (char address)
   }
   // success
   return SUCCESS;
+}
+
+/**********************************************
+ Public Function: TWI_readAck
+ 
+ Purpose: read acknowledge from TWI/I2C Interface
+ 
+ Input Parameter: none
+ 
+ Return Value: uint8_t
+  - TWDR: recieved value at TWI/I2C-Interface, 0 at timeout
+  - 0:    Error at read
+ **********************************************/
+uint8_t TWI_readAck(void){
+    TWCR = (1<<TWINT)|(1<<TWEN)|(1<<TWEA);
+    uint16_t timeout = F_CPU/F_TWI*2.0;
+    while((TWCR & (1 << TWINT)) == 0 &&
+		  timeout !=0){
+		timeout--;
+		if(timeout == 0){
+			// TWI_ErrorCode |= (1 << TWI_READACK);
+			return 0;
+		}
+	};
+  return TWDR;
+}
+
+ /**********************************************
+ Public Function: TWI_readNAck
+ 
+ Purpose: read non-acknowledge from TWI/I2C Interface
+ 
+ Input Parameter: none
+ 
+ Return Value: uint8_t
+  - TWDR: recieved value at TWI/I2C-Interface
+  - 0:    Error at read
+ **********************************************/
+uint8_t TWI_readNAck(void){
+    TWCR = (1<<TWINT)|(1<<TWEN);
+    uint16_t timeout = F_CPU/F_TWI*2.0;
+    while((TWCR & (1 << TWINT)) == 0 &&
+		  timeout !=0){
+		timeout--;
+		if(timeout == 0){
+			// TWI_ErrorCode |= (1 << TWI_READNACK);
+      return 0;
+		}
+	};
+  return TWDR;
 }
 
 /**

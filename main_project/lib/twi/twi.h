@@ -97,6 +97,10 @@
   //      1     0    -    16
   //      1     1    -    64
   #define TWI_FREQ(BIT_RATE, PRESCALER) { TWI_TWBR = BIT_RATE; TWI_TWSR |= (TWI_TWSR & 0x03) | PRESCALER; }
+  #define F_TWI			100000UL  // clock TWI
+
+  #define TWI_READACK	  3		// bit 3: timeout read acknowledge
+  #define TWI_READNACK	4	  // bit 4: timeout read nacknowledge
 
   // TWI start condition
   // -------------------------------------------------------------------------------------
@@ -140,7 +144,9 @@
    *
    * @return  char
    */
-  char TWI_MT_Start (void);
+  char TWI_MT_Start(void);
+
+  char TWI_MT_Start_SLAW(char address);
 
   /**
    * @desc    TWI Send SLAW
@@ -168,6 +174,9 @@
    * @return  unsigned char
    */
   char TWI_MR_Send_SLAR (char);
+
+  uint8_t TWI_readAck(void);
+  uint8_t TWI_readNAck(void);
 
   /**
    * @desc    TWI stop

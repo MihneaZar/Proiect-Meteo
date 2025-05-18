@@ -1,6 +1,4 @@
 #include <avr/interrupt.h>
-#include <avr/sleep.h>
-#include <avr/wdt.h>
 #include <avr/io.h>
 #include <stdio.h>
 
@@ -8,6 +6,10 @@
 #include "timer.h"
 #include "ssd1306.h"
 #include "buttons.h"
+#include "pff.h"
+#include "bme280.h"
+
+FATFS fs;  // sistemul de fisiere
 
 /* No. of seconds before going into standby mode */
 #define STANDBY 60
@@ -67,45 +69,6 @@ void Set_time() {
 }
 
 /***
- * Turns off watchdog for less power consumption.
- */
-void WDT_off(void) {
-    cli();
-    wdt_reset();
-
-    /* Clear WDRF in MCUSR */
-    MCUSR &= ~(1 << WDRF);
-
-    /* Write logical one to WDCE and WDE */
-    /* Keep old prescaler setting to prevent unintentional time-out */
-    WDTCSR |= (1 << WDCE) | (1 << WDE);
-
-    /* Turn off WDT */
-    WDTCSR = 0x00;
-    sei();
-}
-
-/***
- * 0 - turn off standby (turn on device)
- * 1 - turn on standby (turn off device)
- * 
- */
-void standby_function(int command) {
-    if (command == 0) {
-        PRR &= ~(1 << PRTWI);
-        TWI_ENABLE();
-        clear_lcd_line(1);
-    }
-    if (command == 1) {
-        SSD1306_ClearScreen();
-        SSD1306_SetPosition(0, 1);
-        SSD1306_DrawString("  Standby mode...");
-        SSD1306_UpdateScreen(SSD1306_ADDR);
-        PRR |= (1 << PRTWI);
-    }
-}
-
-/***
  * Disables all pull-ups for pins for power-saving.
  * 
  */
@@ -118,6 +81,39 @@ void unused_pins() {
     PORTD = 0;
 }
 
+void SD_Init() {
+    uint32_t last_attempt = 0;
+    while (1) {
+        printf("about to mount\n");
+        uint8_t mount = pf_mount(&fs);
+        printf("done mounting\n");
+        printf("%d\n", mount);
+        if (mount == FR_OK) {
+            printf("mounting is successful\n");
+            break;
+        }
+        // Waits for a second before retrying
+        while(!SYSTICKS_PASSED(last_attempt, 1000));
+        last_attempt = systicks;
+    }
+    pf_open("log.csv");
+    pf_lseek(0);
+}
+
+void SD_log_data(uint32_t temp_c) {
+    /* TODO4 Scrieti temp_c in log.csv */
+    WORD w;
+    pf_write(&temp_c, 4, &w);
+    pf_write(NULL, 0, &w);
+}
+
+uint32_t SD_read_data() {
+    uint32_t temperature_c;
+    WORD w;
+    pf_read(&temperature_c, 4, &w);
+    return temperature_c;
+}
+
 void init_all() {
     sei();
     unused_pins();
@@ -128,6 +124,8 @@ void init_all() {
     SSD1306_ClearScreen();
     SSD1306_UpdateScreen(SSD1306_ADDR);
     Timer2_init_systicks();
+    // SD_Init();
+    bme280_init(0);
     Set_time();
 }
 
@@ -255,10 +253,9 @@ int main() {
     DDRB |= (1 << PB5);
     PORTB &= ~(1 << PB5);
 
-    uint32_t standby_ping = 0;
-    uint8_t standby_mode = 0;
     uint32_t runtime_ping = -2001;
     uint32_t time_ping = -1001;
+    uint32_t last_sensor_read = -5001;
     uint8_t show_runtime = 0;
 
     char options[4][18] = {"time   ", "runtime", "temp      ", "rain"};
@@ -266,18 +263,13 @@ int main() {
     uint8_t max_option = 3;
     print_options_to_lcd(options, option, max_option);
 
+    uint8_t attempt = 0;
+
     while(1) {
-        if (standby_mode) {
-            if (blue_button || red_button) {
-                standby_mode = 0;
-                standby_function(0);
-                blue_button = 0;
-                red_button = 0;
-                print_time_to_lcd();
-                print_options_to_lcd(options, option, max_option);
-                standby_ping = systicks;
-            }
-            continue;
+        if (!attempt) {
+            // SD_log_data(10);
+            // printf("%d vs %ld logged\n", 10, SD_read_data());
+            attempt = 1;
         }
         if (blue_button && !show_runtime) {
             blue_button = 0;
@@ -304,11 +296,29 @@ int main() {
                 show_runtime = 1;
             }
         }
-        if (SYSTICKS_PASSED(standby_ping, (uint16_t) STANDBY * 1000)) {
-            standby_mode = 1;
-            PORTB &= ~(1 << PB5);
-            standby_function(1);
-            continue;
+        if (SYSTICKS_PASSED(last_sensor_read, 5000)) {
+            char show_temp[10];
+            last_sensor_read = systicks;
+            float temperature = (float) bme280_readTemperature(0);
+            float pressure = (float) bme280_readPressure(0);
+            float humidity = (float) bme280_readHumidity(0);
+            printf("%f %f %f\n", temperature, pressure, humidity);
+            if (temperature) {
+
+            }
+            if (-10 < temperature && temperature < 10) {
+                show_temp[0] = ' ';
+            } else {
+                show_temp[0] = '0' + temperature / 10;
+            }
+            show_temp[1] = '0' + (int) temperature % 10;
+            show_temp[2] = ' ';
+            show_temp[3] = 'C';
+            show_temp[4] = '\0';
+            
+            SSD1306_SetPosition(0, 1);
+            SSD1306_DrawString(show_temp);
+            SSD1306_UpdateScreen(SSD1306_ADDR);
         }
         if (SYSTICKS_PASSED(runtime_ping, 2000) && show_runtime) {
             print_runtime_to_lcd('c');
