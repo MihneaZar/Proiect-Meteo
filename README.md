@@ -10,4 +10,6 @@ Folder-ul timer și button_interrupt sunt pentru numărarea milisecundelor și p
 în timp ce sd_reader, ssd1306 și bme280 sunt pentru folosirea cititorului de microsd, a ecranului lcd și a senzorului.
 Directorul miscellaneous conține fișierele pentru afișarea informațiilor pe lcd și preluarea datelor meteo de la senzor.
 
+![image](hardware/hardware_poza)
+
 Demo aparat: https://youtu.be/tAVXPxxvXbI
