@@ -8,6 +8,7 @@
 #include "buttons.h"
 #include "pff.h"
 #include "bme280.h"
+#include "print_to_lcd.h"
 
 FATFS fs;  // sistemul de fisiere
 
@@ -21,13 +22,6 @@ void copy_string_values(volatile char *string, char *copy_string) {
         i++;
     }
     string[i] = '\0';
-}
-
-void clear_lcd_line(int line) {
-    char *clear = "                  ";
-    SSD1306_SetPosition(0, line);
-    SSD1306_DrawString(clear);
-    SSD1306_UpdateScreen(SSD1306_ADDR);
 }
 
 void Set_time() {
@@ -125,126 +119,8 @@ void init_all() {
     SSD1306_UpdateScreen(SSD1306_ADDR);
     Timer2_init_systicks();
     // SD_Init();
-    bme280_init(0);
+    bme280_init(1);
     Set_time();
-}
-
-void print_time_to_lcd() {
-    char time_string[12];
-    time_to_string(time_string);
-    SSD1306_SetPosition(35, 0);
-    SSD1306_DrawString(time_string);
-    SSD1306_UpdateScreen(SSD1306_ADDR);
-}
-
-void print_options_to_lcd(char options[4][18], int option, int max_option) {
-    char print_options[50];
-    int position = 0;
-    for (int i = 0; i <= max_option; i++) {
-        if (i == option) {
-            print_options[position++] = '>';
-        } else {
-            print_options[position++] = ' ';
-        }
-        int option_pos = 0;
-        while(options[i][option_pos]) {
-            print_options[position++] = options[i][option_pos++];
-        }
-        print_options[position++] = ' ';
-    }
-    print_options[position] = '\0';
-    SSD1306_SetPosition(0, 2);
-    SSD1306_DrawString(print_options);
-    SSD1306_UpdateScreen(SSD1306_ADDR);
-}
-
-void value_to_string(char *string, int value, char append) {
-    int power_of_ten = 1;
-    while (value / power_of_ten >= 10) {
-        power_of_ten *= 10;
-    }
-    int position = 0;
-    while(power_of_ten > 0) {
-        string[position++] = value % (power_of_ten * 10) / power_of_ten + '0';
-        power_of_ten /= 10;
-    }
-    string[position++] = append;
-    string[position] = '\0'; 
-    // copy_string_values(append, string + position);
-}
-
-void runtime_to_string(char *string) {
-    uint32_t runtime = systicks / 1000;
-    uint8_t seconds = runtime % 60;
-    runtime /= 60;
-    uint32_t minutes = runtime % 60;
-    runtime /= 60;
-    uint8_t hours = runtime % 24;
-    runtime /= 24;
-    uint8_t days = runtime;
-    uint8_t already_printed = 0;
-    uint8_t position = 0;
-
-    if (days > 0) {
-        if (days > 9) {
-            string[position++] = days / 10 + '0';
-        }
-        string[position++] = days % 10 + '0';
-        string[position++] = 'd';
-        string[position++] = ' ';
-        already_printed = 1;
-    }
-    if (hours > 0 || already_printed) {
-        if (hours > 9) {
-            string[position++] = hours / 10 + '0';
-        }
-        string[position++] = hours % 10 + '0';
-        string[position++] = 'h';
-        string[position++] = ' ';
-        already_printed = 1;
-    }
-    if (minutes > 0 || already_printed) {
-        if (minutes > 9) {
-            string[position++] = minutes / 10 + '0';
-        }
-        string[position++] = minutes % 10 + '0';
-        string[position++] = 'm';
-        string[position++] = ' ';
-    }
-    if (seconds > 9) {
-        string[position++] = seconds / 10 + '0';
-    }
-    string[position++] = seconds % 10 + '0';
-    string[position++] = 's';
-    string[position++] = ' ';
-    string[position++] = '\0';
-}
-
-/***
- * p = print runtime
- * u = update
- * c = clear runtime
- * 
- */
-void print_runtime_to_lcd(char command) {
-    if (command == 'p') {
-        clear_lcd_line(2);
-        clear_lcd_line(3);
-    }
-    if (command == 'p' || command == 'u') {
-        char print_runtime[18] = "Current runtime:";
-        SSD1306_SetPosition(0, 1);
-        SSD1306_DrawString(print_runtime);
-        runtime_to_string(print_runtime);
-        SSD1306_SetPosition(0, 2);
-        SSD1306_DrawString(print_runtime);
-        SSD1306_UpdateScreen(SSD1306_ADDR);
-    }
-    if (command == 'c') {
-        clear_lcd_line(1);
-        clear_lcd_line(2);
-        clear_lcd_line(3);
-    }
 }
 
 int main() { 
@@ -254,31 +130,27 @@ int main() {
     PORTB &= ~(1 << PB5);
 
     uint32_t runtime_ping = -2001;
+    uint32_t rainchance_ping = -2001;
     uint32_t time_ping = -1001;
     uint32_t last_sensor_read = -5001;
     uint8_t show_runtime = 0;
+    uint8_t show_rainchance = 0;
 
     char options[4][18] = {"time   ", "runtime", "temp      ", "rain"};
     uint8_t option = 0;
     uint8_t max_option = 3;
     print_options_to_lcd(options, option, max_option);
 
-    uint8_t attempt = 0;
+    char temp_format = 'C';
 
     while(1) {
-        if (!attempt) {
-            // SD_log_data(10);
-            // printf("%d vs %ld logged\n", 10, SD_read_data());
-            attempt = 1;
-        }
-        if (blue_button && !show_runtime) {
+        if (blue_button && !show_runtime && !show_rainchance) {
             blue_button = 0;
             option = NEXT_OPTION(option, max_option);
             print_options_to_lcd(options, option, max_option);
         }
-        if (red_button && !show_runtime) {
+        if (red_button && !show_runtime && !show_rainchance) {
             red_button = 0;
-
             // change time format
             if (option == 0) {
                 if (time_format == 24) {
@@ -288,41 +160,36 @@ int main() {
                 }  
                 print_time_to_lcd();
             }
-
             // show runtime
             if (option == 1) {
                 print_runtime_to_lcd('p');
                 runtime_ping = systicks;
                 show_runtime = 1;
             }
+            // change temperature format
+            if (option == 2) {
+                if (temp_format == 'C') {
+                    temp_format = 'F';
+                } else {
+                    temp_format = 'C';
+                }
+                last_sensor_read = -5001;
+            }
+            // show rain chance
+            if (option == 3) {
+                print_rainchance();
+                show_rainchance = 1;
+                rainchance_ping = systicks;
+            }
         }
-        if (SYSTICKS_PASSED(last_sensor_read, 5000)) {
-            char show_temp[10];
+        if (SYSTICKS_PASSED(last_sensor_read, 5000) && !show_runtime && !show_rainchance) {
+            print_weather(temp_format);
             last_sensor_read = systicks;
-            float temperature = (float) bme280_readTemperature(0);
-            float pressure = (float) bme280_readPressure(0);
-            float humidity = (float) bme280_readHumidity(0);
-            printf("%f %f %f\n", temperature, pressure, humidity);
-            if (temperature) {
-
-            }
-            if (-10 < temperature && temperature < 10) {
-                show_temp[0] = ' ';
-            } else {
-                show_temp[0] = '0' + temperature / 10;
-            }
-            show_temp[1] = '0' + (int) temperature % 10;
-            show_temp[2] = ' ';
-            show_temp[3] = 'C';
-            show_temp[4] = '\0';
-            
-            SSD1306_SetPosition(0, 1);
-            SSD1306_DrawString(show_temp);
-            SSD1306_UpdateScreen(SSD1306_ADDR);
         }
         if (SYSTICKS_PASSED(runtime_ping, 2000) && show_runtime) {
             print_runtime_to_lcd('c');
             show_runtime = 0;
+            print_weather(temp_format);
             print_options_to_lcd(options, option, max_option);
         }
         if (SYSTICKS_PASSED(time_ping, 1000)) {
@@ -336,6 +203,11 @@ int main() {
             } else {
                 PORTB |= (1 << PB5);
             }
+        }
+        if (SYSTICKS_PASSED(rainchance_ping, 2000) && show_rainchance) {
+            show_rainchance = 0;
+            print_weather(temp_format);
+            print_options_to_lcd(options, option, max_option);
         }
     }
     return 0;
