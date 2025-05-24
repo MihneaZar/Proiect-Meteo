@@ -8,8 +8,10 @@ Funcții: în src/main.c, init_all() inițiază toate modulele necesare pentru r
 În lib, directoarele usart, spi, respectiv twi conțin funcțiile pentru comunicarea respectivă.
 Folder-ul timer și button_interrupt sunt pentru numărarea milisecundelor și pentru butoane,
 în timp ce sd_reader, ssd1306 și bme280 sunt pentru folosirea cititorului de microsd, a ecranului lcd și a senzorului.
-Directorul miscellaneous conține fișierele pentru afișarea informațiilor pe lcd și preluarea datelor meteo de la senzor.
-
-![image](hardware/hardware_poza)
-
+Directorul miscellaneous conține fișierele pentru afișarea informațiilor pe lcd și preluarea datelor meteo de la senzor.  
+</br>
+<p align="center">
+  <img src="hardware/hardware_poza.jpg" width="500"/>
+</p>
+</br>
 Demo aparat: https://youtu.be/tAVXPxxvXbI
